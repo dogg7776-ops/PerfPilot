@@ -31,7 +31,7 @@ jobs:
       - name: Reassemble and extract source
         run: |
           cat source_chunks/part-*.txt | base64 -d > PerfPilot-source-ui.zip
-          test "$(stat -c%s PerfPilot-source-ui.zip)" -eq 31111
+          test "$(stat -c%s PerfPilot-source-ui.zip)" -eq 31092
           rm -rf buildsrc
           mkdir buildsrc
           unzip -q PerfPilot-source-ui.zip -d buildsrc
