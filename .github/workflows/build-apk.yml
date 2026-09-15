@@ -30,42 +30,23 @@ jobs:
 
       - name: Reassemble and extract source
         run: |
-          cat source_chunks/part-*.txt | base64 -d > PerfPilot-source-fixed.zip
-          test "$(stat -c%s PerfPilot-source-fixed.zip)" -eq 28573
+          cat source_chunks/part-*.txt | base64 -d > PerfPilot-source-ui.zip
+          test "$(stat -c%s PerfPilot-source-ui.zip)" -eq 31111
           rm -rf buildsrc
           mkdir buildsrc
-          unzip -q PerfPilot-source-fixed.zip -d buildsrc
+          unzip -q PerfPilot-source-ui.zip -d buildsrc
           test -f buildsrc/PerfPilot/settings.gradle.kts
-
-      - name: Patch Shizuku compatibility
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          shell = Path('buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/ShellEngine.kt')
-          s = shell.read_text(encoding='utf-8')
-          old = '                Mode.SHIZUKU -> Shizuku.newProcess(arrayOf("sh", "-c", command), null, null)'
-          new = '                Mode.SHIZUKU -> Runtime.getRuntime().exec(arrayOf("sh", "-c", command))'
-          if old not in s:
-              raise SystemExit('expected Shizuku.newProcess call not found')
-          shell.write_text(s.replace(old, new), encoding='utf-8')
-
-          controller = Path('buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/PerfController.kt')
-          c = controller.read_text(encoding='utf-8')
-          c = c.replace('Shizuku：可执行 shell；多数 /sys 写入仍受 SELinux/权限限制',
-                        'Shizuku：已授权；当前构建暂用本地 shell，Root 功能仍需 Root')
-          controller.write_text(c, encoding='utf-8')
-          PY
 
       - name: Build debug APK
         working-directory: buildsrc/PerfPilot
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Copy APK
-        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v0.2-debug.apk
+        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v0.3-ui-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PerfPilot-v0.2-debug-apk
-          path: PerfPilot-v0.2-debug.apk
+          name: PerfPilot-v0.3-ui-debug-apk
+          path: PerfPilot-v0.3-ui-debug.apk
           if-no-files-found: error
