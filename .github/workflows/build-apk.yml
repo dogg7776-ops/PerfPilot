@@ -1,0 +1,53 @@
+name: Build PerfPilot APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 17 platform
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-37"
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Extract source
+        run: |
+          rm -rf buildsrc
+          mkdir buildsrc
+          unzip -q PerfPilot-source-v0.2-ci.zip -d buildsrc
+          test -f buildsrc/PerfPilot/settings.gradle.kts
+
+      - name: Build debug APK
+        working-directory: buildsrc/PerfPilot
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Copy APK
+        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v0.2-debug.apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: PerfPilot-v0.2-debug-apk
+          path: PerfPilot-v0.2-debug.apk
+          if-no-files-found: error
