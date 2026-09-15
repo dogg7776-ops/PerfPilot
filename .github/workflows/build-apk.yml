@@ -28,11 +28,13 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Extract source
+      - name: Reassemble and extract source
         run: |
+          cat source_chunks/part-*.txt | base64 -d > PerfPilot-source-fixed.zip
+          test "$(stat -c%s PerfPilot-source-fixed.zip)" -eq 28573
           rm -rf buildsrc
           mkdir buildsrc
-          unzip -q PerfPilot-source-v0.2-ci.zip -d buildsrc
+          unzip -q PerfPilot-source-fixed.zip -d buildsrc
           test -f buildsrc/PerfPilot/settings.gradle.kts
 
       - name: Build debug APK
