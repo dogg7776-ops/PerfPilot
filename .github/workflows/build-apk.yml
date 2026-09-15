@@ -18,10 +18,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android 17 platform
+      - name: Install Android SDK platform
         run: |
           yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-37"
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platform-tools" "platforms;android-36"
 
       - name: Set up Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
