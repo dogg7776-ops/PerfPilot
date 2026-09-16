@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.Choreographer
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -22,6 +23,7 @@ class MainActivity : Activity() {
     private lateinit var perf: PerfController
     private lateinit var metricsReader: RuntimeMetricsReader
     private val worker = Executors.newSingleThreadExecutor()
+    private val metricsWorker = Executors.newFixedThreadPool(3)
     private val main = Handler(Looper.getMainLooper())
     private lateinit var deviceValue: TextView
     private lateinit var shizukuValue: TextView
@@ -34,6 +36,28 @@ class MainActivity : Activity() {
     private var shizukuListenerRegistered = false
     private var binderListenersRegistered = false
     @Volatile private var metricsRunning = false
+    @Volatile private var metricsRound = 0L
+
+    private var fpsWindowStartNs = 0L
+    private var fpsFrames = 0
+    private val frameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!metricsRunning) return
+            if (fpsWindowStartNs == 0L) {
+                fpsWindowStartNs = frameTimeNanos
+                fpsFrames = 0
+            }
+            fpsFrames++
+            val elapsed = frameTimeNanos - fpsWindowStartNs
+            if (elapsed >= 1_000_000_000L) {
+                val fps = fpsFrames * 1_000_000_000.0 / elapsed
+                if (::fpsValue.isInitialized) fpsValue.text = if (fps in 1.0..300.0) "${"%.1f".format(java.util.Locale.US, fps)}" else "N/A"
+                fpsWindowStartNs = frameTimeNanos
+                fpsFrames = 0
+            }
+            Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
 
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { _, grant ->
         shell.invalidateModeCache()
@@ -48,7 +72,7 @@ class MainActivity : Activity() {
         UiKit.applyWindow(this)
         shell = ShellEngine(this)
         perf = PerfController(this, shell)
-        metricsReader = RuntimeMetricsReader(shell)
+        metricsReader = RuntimeMetricsReader(this, shell)
         try {
             Shizuku.addRequestPermissionResultListener(permissionListener)
             shizukuListenerRegistered = true
@@ -93,11 +117,11 @@ class MainActivity : Activity() {
         status.addView(perfValue)
         root.addView(status)
 
-        root.addView(UiKit.sectionTitle(this, "实时状态", "每项独立检测；Shizuku 某一路失败不会再把四项一起清成 N/A。"))
+        root.addView(UiKit.sectionTitle(this, "实时状态", "CPU / GPU / 电池温度独立并行读取；界面 FPS 由 Android VSync 实测，不拿刷新率冒充。"))
         val cpuTile = metric("CPU", "检测中…"); cpuValue = cpuTile.second
         val gpuTile = metric("GPU", "检测中…"); gpuValue = gpuTile.second
-        val tempTile = metric("温度", "检测中…"); tempValue = tempTile.second
-        val fpsTile = metric("FPS", "检测中…"); fpsValue = fpsTile.second
+        val tempTile = metric("电池温度", "检测中…"); tempValue = tempTile.second
+        val fpsTile = metric("界面 FPS", "采样中…"); fpsValue = fpsTile.second
         root.addView(UiKit.row(this, cpuTile.first, gpuTile.first))
         root.addView(UiKit.gap(this, 8))
         root.addView(UiKit.row(this, tempTile.first, fpsTile.first))
@@ -196,25 +220,34 @@ class MainActivity : Activity() {
         super.onResume()
         refreshStatus()
         metricsRunning = true
-        metricsLoop()
+        metricsRound++
+        fpsWindowStartNs = 0L
+        fpsFrames = 0
+        Choreographer.getInstance().postFrameCallback(frameCallback)
+        metricsLoop(metricsRound)
     }
 
     override fun onPause() {
         metricsRunning = false
+        metricsRound++
+        try { Choreographer.getInstance().removeFrameCallback(frameCallback) } catch (_: Throwable) {}
         super.onPause()
     }
 
-    private fun metricsLoop() {
-        if (!metricsRunning || worker.isShutdown) return
-        worker.execute {
-            val m = try { metricsReader.read() } catch (_: Throwable) { null }
+    private fun metricsLoop(round: Long) {
+        if (!metricsRunning || metricsWorker.isShutdown || round != metricsRound) return
+        runMetric(round, { metricsReader.readCpu() }) { cpuValue.text = it }
+        runMetric(round, { metricsReader.readGpu() }) { gpuValue.text = it }
+        runMetric(round, { metricsReader.readBatteryTemperature() }) { tempValue.text = it }
+        main.postDelayed({ metricsLoop(round) }, 4000)
+    }
+
+    private fun runMetric(round: Long, read: () -> String, apply: (String) -> Unit) {
+        metricsWorker.execute {
+            val value = try { read() } catch (_: Throwable) { "N/A" }
             main.post {
-                if (!metricsRunning || m == null || isFinishing) return@post
-                cpuValue.text = m.cpu
-                gpuValue.text = m.gpu
-                tempValue.text = m.temp
-                fpsValue.text = m.fps
-                main.postDelayed({ metricsLoop() }, 3000)
+                if (!metricsRunning || isFinishing || isDestroyed || round != metricsRound) return@post
+                apply(value)
             }
         }
     }
@@ -261,6 +294,7 @@ class MainActivity : Activity() {
             try { Shizuku.removeBinderDeadListener(binderDead) } catch (_: Throwable) {}
         }
         worker.shutdownNow()
+        metricsWorker.shutdownNow()
         super.onDestroy()
     }
 
