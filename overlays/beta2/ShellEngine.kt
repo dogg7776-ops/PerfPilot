@@ -1,0 +1,155 @@
+package com.oai.perfpilot
+
+import android.content.ComponentName
+import android.content.Context
+import android.content.ServiceConnection
+import android.os.IBinder
+import android.os.Parcel
+import rikka.shizuku.Shizuku
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+class ShellEngine(private val context: Context) {
+    enum class Mode { ROOT, SHIZUKU, LOCAL }
+
+    data class Result(val code: Int, val out: String, val err: String, val mode: Mode) {
+        val ok: Boolean get() = code == 0
+        fun pretty(): String = buildString {
+            append("[").append(mode).append("] exit=").append(code)
+            if (out.isNotBlank()) append("\n").append(out.trim())
+            if (err.isNotBlank()) append("\nERR: ").append(err.trim())
+        }
+    }
+
+    @Volatile private var cachedMode: Mode? = null
+    @Volatile private var cachedAt: Long = 0L
+    @Volatile private var userServiceBinder: IBinder? = null
+    @Volatile private var connectLatch: CountDownLatch? = null
+    private val bindLock = Any()
+
+    private val userServiceArgs by lazy {
+        Shizuku.UserServiceArgs(ComponentName(context.packageName, PrivilegedShellService::class.java.name))
+            .processNameSuffix("privileged_shell")
+            .tag("perfpilot_privileged_shell")
+            .version(4)
+            .daemon(false)
+    }
+
+    private val userServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            userServiceBinder = service
+            connectLatch?.countDown()
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            userServiceBinder = null
+        }
+    }
+
+    fun hasRoot(): Boolean = try {
+        val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+        p.waitFor(1200, TimeUnit.MILLISECONDS) && p.exitValue() == 0
+    } catch (_: Throwable) { false }
+
+    fun hasShizukuBinder(): Boolean = try { Shizuku.pingBinder() } catch (_: Throwable) { false }
+
+    fun hasShizukuPermission(): Boolean = try {
+        hasShizukuBinder() && Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
+    } catch (_: Throwable) { false }
+
+    fun hasPrivilegedWrite(): Boolean = hasShizukuPermission() || hasRoot()
+
+    fun invalidateModeCache() {
+        cachedMode = null
+        cachedAt = 0L
+    }
+
+    /** Prefer Shizuku so a rooted phone still uses the no-root path when possible. */
+    fun bestMode(): Mode {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val old = cachedMode
+        if (old != null && now - cachedAt < 5000L) return old
+        val mode = when {
+            hasShizukuPermission() -> Mode.SHIZUKU
+            hasRoot() -> Mode.ROOT
+            else -> Mode.LOCAL
+        }
+        cachedMode = mode
+        cachedAt = now
+        return mode
+    }
+
+    fun requestShizukuPermission(code: Int) {
+        invalidateModeCache()
+        if (hasShizukuBinder() && !hasShizukuPermission()) Shizuku.requestPermission(code)
+    }
+
+    private fun getShizukuBinder(timeoutMs: Long): IBinder? {
+        userServiceBinder?.let { if (it.isBinderAlive) return it }
+        if (!hasShizukuPermission()) return null
+        synchronized(bindLock) {
+            userServiceBinder?.let { if (it.isBinderAlive) return it }
+            val latch = CountDownLatch(1)
+            connectLatch = latch
+            try {
+                Shizuku.bindUserService(userServiceArgs, userServiceConnection)
+            } catch (_: Throwable) {
+                connectLatch = null
+                return null
+            }
+            latch.await(timeoutMs.coerceIn(500L, 4500L), TimeUnit.MILLISECONDS)
+            connectLatch = null
+            return userServiceBinder?.takeIf { it.isBinderAlive }
+        }
+    }
+
+    private fun execShizuku(command: String, timeoutMs: Long): Result {
+        val binder = getShizukuBinder((timeoutMs / 2).coerceAtLeast(1200L))
+            ?: return Result(126, "", "Shizuku UserService 未连接", Mode.SHIZUKU)
+        val data = Parcel.obtain()
+        val reply = Parcel.obtain()
+        return try {
+            data.writeInterfaceToken(PrivilegedShellService.DESCRIPTOR)
+            data.writeString(command)
+            data.writeLong(timeoutMs)
+            if (!binder.transact(PrivilegedShellService.TRANSACTION_EXEC, data, reply, 0)) {
+                return Result(126, "", "Shizuku UserService transact 失败", Mode.SHIZUKU)
+            }
+            reply.readException()
+            val code = reply.readInt()
+            val out = reply.readString().orEmpty()
+            val err = reply.readString().orEmpty()
+            Result(code, out, err, Mode.SHIZUKU)
+        } catch (t: Throwable) {
+            userServiceBinder = null
+            Result(127, "", t.message ?: t.javaClass.simpleName, Mode.SHIZUKU)
+        } finally {
+            data.recycle()
+            reply.recycle()
+        }
+    }
+
+    fun exec(command: String, forceMode: Mode? = null, timeoutMs: Long = 7000): Result {
+        val mode = forceMode ?: bestMode()
+        if (mode == Mode.SHIZUKU) return execShizuku(command, timeoutMs)
+        return try {
+            val p = when (mode) {
+                Mode.ROOT -> Runtime.getRuntime().exec(arrayOf("su", "-c", command))
+                Mode.LOCAL -> Runtime.getRuntime().exec(arrayOf("sh", "-c", command))
+                Mode.SHIZUKU -> error("handled above")
+            }
+            val finished = p.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
+            if (!finished) {
+                p.destroy()
+                return Result(124, "", "命令超时", mode)
+            }
+            val out = BufferedReader(InputStreamReader(p.inputStream)).use { it.readText() }
+            val err = BufferedReader(InputStreamReader(p.errorStream)).use { it.readText() }
+            Result(p.exitValue(), out, err, mode)
+        } catch (t: Throwable) {
+            Result(127, "", t.message ?: t.javaClass.simpleName, mode)
+        }
+    }
+}
