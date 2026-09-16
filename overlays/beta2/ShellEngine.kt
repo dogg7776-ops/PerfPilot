@@ -6,10 +6,12 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import android.os.Parcel
 import rikka.shizuku.Shizuku
+import rikka.shizuku.ShizukuRemoteProcess
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 class ShellEngine(private val context: Context) {
     enum class Mode { ROOT, SHIZUKU, LOCAL }
@@ -33,7 +35,7 @@ class ShellEngine(private val context: Context) {
         Shizuku.UserServiceArgs(ComponentName(context.packageName, PrivilegedShellService::class.java.name))
             .processNameSuffix("privileged_shell")
             .tag("perfpilot_privileged_shell")
-            .version(4)
+            .version(5)
             .daemon(false)
     }
 
@@ -66,7 +68,6 @@ class ShellEngine(private val context: Context) {
         cachedAt = 0L
     }
 
-    /** Prefer Shizuku so a rooted phone still uses the no-root path when possible. */
     fun bestMode(): Mode {
         val now = android.os.SystemClock.elapsedRealtime()
         val old = cachedMode
@@ -84,6 +85,16 @@ class ShellEngine(private val context: Context) {
     fun requestShizukuPermission(code: Int) {
         invalidateModeCache()
         if (hasShizukuBinder() && !hasShizukuPermission()) Shizuku.requestPermission(code)
+    }
+
+    fun shizukuServerSummary(): String = try {
+        if (!hasShizukuBinder()) return "binder=down"
+        val uid = Shizuku.getUid()
+        val api = Shizuku.getVersion()
+        val se = try { Shizuku.getSELinuxContext().orEmpty() } catch (_: Throwable) { "" }
+        "uid=$uid api=$api" + if (se.isNotBlank()) " se=$se" else ""
+    } catch (t: Throwable) {
+        "server-meta-error=${t.javaClass.simpleName}:${t.message.orEmpty()}"
     }
 
     private fun getShizukuBinder(timeoutMs: Long): IBinder? {
@@ -105,9 +116,8 @@ class ShellEngine(private val context: Context) {
         }
     }
 
-    private fun execShizuku(command: String, timeoutMs: Long): Result {
-        val binder = getShizukuBinder((timeoutMs / 2).coerceAtLeast(1200L))
-            ?: return Result(126, "", "Shizuku UserService 未连接", Mode.SHIZUKU)
+    private fun execViaUserService(command: String, timeoutMs: Long): Result? {
+        val binder = getShizukuBinder((timeoutMs / 2).coerceAtLeast(1200L)) ?: return null
         val data = Parcel.obtain()
         val reply = Parcel.obtain()
         return try {
@@ -115,20 +125,66 @@ class ShellEngine(private val context: Context) {
             data.writeString(command)
             data.writeLong(timeoutMs)
             if (!binder.transact(PrivilegedShellService.TRANSACTION_EXEC, data, reply, 0)) {
-                return Result(126, "", "Shizuku UserService transact 失败", Mode.SHIZUKU)
+                userServiceBinder = null
+                null
+            } else {
+                reply.readException()
+                val code = reply.readInt()
+                val out = reply.readString().orEmpty()
+                val err = reply.readString().orEmpty()
+                Result(code, out, err, Mode.SHIZUKU)
             }
-            reply.readException()
-            val code = reply.readInt()
-            val out = reply.readString().orEmpty()
-            val err = reply.readString().orEmpty()
-            Result(code, out, err, Mode.SHIZUKU)
-        } catch (t: Throwable) {
+        } catch (_: Throwable) {
             userServiceBinder = null
-            Result(127, "", t.message ?: t.javaClass.simpleName, Mode.SHIZUKU)
+            null
         } finally {
             data.recycle()
             reply.recycle()
         }
+    }
+
+    /**
+     * Compatibility path matching older Shizuku-based tuning tools.
+     * Shizuku 13 still contains newProcess internally although it is private/deprecated;
+     * reflection is used only when the modern UserService path cannot be established.
+     */
+    private fun execViaLegacyRemoteProcess(command: String, timeoutMs: Long): Result {
+        if (!hasShizukuPermission()) return Result(126, "", "Shizuku 未授权", Mode.SHIZUKU)
+        return try {
+            val method = Shizuku::class.java.getDeclaredMethod(
+                "newProcess",
+                Array<String>::class.java,
+                Array<String>::class.java,
+                String::class.java
+            )
+            method.isAccessible = true
+            val process = method.invoke(null, arrayOf("sh", "-c", command), null, null) as ShizukuRemoteProcess
+            val outRef = AtomicReference("")
+            val errRef = AtomicReference("")
+            val outThread = Thread {
+                outRef.set(runCatching { BufferedReader(InputStreamReader(process.inputStream)).use { it.readText() } }.getOrDefault(""))
+            }
+            val errThread = Thread {
+                errRef.set(runCatching { BufferedReader(InputStreamReader(process.errorStream)).use { it.readText() } }.getOrDefault(""))
+            }
+            outThread.start()
+            errThread.start()
+            val finished = process.waitForTimeout(timeoutMs.coerceAtLeast(500L), TimeUnit.MILLISECONDS)
+            if (!finished) process.destroy()
+            outThread.join(800)
+            errThread.join(800)
+            if (!finished) Result(124, outRef.get(), "legacy remote process timeout\n${errRef.get()}".trim(), Mode.SHIZUKU)
+            else Result(process.exitValue(), outRef.get(), errRef.get(), Mode.SHIZUKU)
+        } catch (t: Throwable) {
+            val cause = t.cause ?: t
+            Result(127, "", "legacy Shizuku process failed: ${cause.javaClass.simpleName}: ${cause.message.orEmpty()}", Mode.SHIZUKU)
+        }
+    }
+
+    private fun execShizuku(command: String, timeoutMs: Long): Result {
+        val modern = execViaUserService(command, timeoutMs)
+        if (modern != null) return modern
+        return execViaLegacyRemoteProcess(command, timeoutMs)
     }
 
     fun exec(command: String, forceMode: Mode? = null, timeoutMs: Long = 7000): Result {
@@ -140,14 +196,18 @@ class ShellEngine(private val context: Context) {
                 Mode.LOCAL -> Runtime.getRuntime().exec(arrayOf("sh", "-c", command))
                 Mode.SHIZUKU -> error("handled above")
             }
+            val outRef = AtomicReference("")
+            val errRef = AtomicReference("")
+            val outThread = Thread { outRef.set(runCatching { BufferedReader(InputStreamReader(p.inputStream)).use { it.readText() } }.getOrDefault("")) }
+            val errThread = Thread { errRef.set(runCatching { BufferedReader(InputStreamReader(p.errorStream)).use { it.readText() } }.getOrDefault("")) }
+            outThread.start()
+            errThread.start()
             val finished = p.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
-            if (!finished) {
-                p.destroy()
-                return Result(124, "", "命令超时", mode)
-            }
-            val out = BufferedReader(InputStreamReader(p.inputStream)).use { it.readText() }
-            val err = BufferedReader(InputStreamReader(p.errorStream)).use { it.readText() }
-            Result(p.exitValue(), out, err, mode)
+            if (!finished) p.destroy()
+            outThread.join(500)
+            errThread.join(500)
+            if (!finished) Result(124, outRef.get(), "命令超时\n${errRef.get()}".trim(), mode)
+            else Result(p.exitValue(), outRef.get(), errRef.get(), mode)
         } catch (t: Throwable) {
             Result(127, "", t.message ?: t.javaClass.simpleName, mode)
         }
