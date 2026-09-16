@@ -42,10 +42,10 @@ jobs:
       - name: Apply proven crash-safe base patch
         run: python3 patch_crashsafe.py
 
-      - name: Apply K90 Max / Dimensity 9500 beta2 overlay
+      - name: Apply K90 Max / Dimensity 9500 beta3 crashfix overlay
         run: |
           python3 scripts/apply_beta2.py
-          grep -q 'versionName = "1.0.0-beta2-k90"' buildsrc/PerfPilot/app/build.gradle.kts
+          grep -q 'versionName = "1.0.0-beta3-k90-crashfix"' buildsrc/PerfPilot/app/build.gradle.kts
           grep -q 'MT6993' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/DeviceProfile.kt
           grep -q '165' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/DeviceProfile.kt
 
@@ -57,11 +57,11 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Copy APK
-        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v1.0-beta2-k90-debug.apk
+        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v1.0-beta3-k90-crashfix-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PerfPilot-v1.0-beta2-k90-debug-apk
-          path: PerfPilot-v1.0-beta2-k90-debug.apk
+          name: PerfPilot-v1.0-beta3-k90-crashfix-debug-apk
+          path: PerfPilot-v1.0-beta3-k90-crashfix-debug.apk
           if-no-files-found: error
