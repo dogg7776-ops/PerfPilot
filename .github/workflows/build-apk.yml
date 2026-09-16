@@ -42,15 +42,15 @@ jobs:
       - name: Apply proven crash-safe base patch
         run: python3 patch_crashsafe.py
 
-      - name: Apply K90 Max / Dimensity 9500 beta7 GPU telemetry overlay
+      - name: Apply K90 Max / Dimensity 9500 beta8 usability fixes
         run: |
           python3 scripts/apply_beta2.py
-          grep -q 'versionName = "1.0.0-beta7-k90-gpufix"' buildsrc/PerfPilot/app/build.gradle.kts
+          python3 scripts/patch_beta8.py buildsrc/PerfPilot
+          grep -q 'versionName = "1.0.0-beta8-k90-usability"' buildsrc/PerfPilot/app/build.gradle.kts
           grep -q 'MT6993' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/DeviceProfile.kt
-          grep -q 'execViaLegacyRemoteProcess' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/ShellEngine.kt
-          grep -q 'stack_working_opp_table' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt
-          grep -q 'cachedGpuPath' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt
-          grep -q 'Choreographer.FrameCallback' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/MainActivity.kt
+          grep -q 'gpu_utilization' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt
+          grep -q 'set-user-preferred-display-mode' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/PerfController.kt
+          grep -q 'OverlayService.isRunning()' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/MainActivity.kt
 
       - name: Static integration and safety checks
         run: python3 scripts/ci_check_beta2.py buildsrc/PerfPilot
@@ -60,11 +60,11 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Copy APK
-        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v1.0-beta7-k90-gpufix-debug.apk
+        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v1.0-beta8-k90-usability-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PerfPilot-v1.0-beta7-k90-gpufix-debug-apk
-          path: PerfPilot-v1.0-beta7-k90-gpufix-debug.apk
+          name: PerfPilot-v1.0-beta8-k90-usability-debug-apk
+          path: PerfPilot-v1.0-beta8-k90-usability-debug.apk
           if-no-files-found: error
