@@ -72,18 +72,19 @@ class RuntimeMetricsReader(context: Context, private val shell: ShellEngine) {
     }
 
     fun readGpu(): String {
+        val d = '$'
         val cmd = """
             for f in /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/current_frequency /sys/kernel/ged/hal/gpu_freq /sys/kernel/ged/gpu_freq; do
-              [ -r "$f" ] || continue
-              v=$(cat "$f" 2>/dev/null | head -n1)
-              [ -n "$v" ] && { echo "DIRECT=$v"; exit 0; }
+              [ -r "${d}f" ] || continue
+              v=${d}(cat "${d}f" 2>/dev/null | head -n1)
+              [ -n "${d}v" ] && { echo "DIRECT=${d}v"; exit 0; }
             done
-            for d in /sys/class/devfreq/*; do
-              [ -d "$d" ] || continue
-              n=$(cat "$d/name" 2>/dev/null); b=$(basename "$d")
-              case "$n $b" in *gpu*|*GPU*|*mali*|*MALI*)
-                v=$(cat "$d/cur_freq" 2>/dev/null)
-                [ -n "$v" ] && { echo "DEVFREQ=$v"; exit 0; }
+            for x in /sys/class/devfreq/*; do
+              [ -d "${d}x" ] || continue
+              n=${d}(cat "${d}x/name" 2>/dev/null); b=${d}(basename "${d}x")
+              case "${d}n ${d}b" in *gpu*|*GPU*|*mali*|*MALI*)
+                v=${d}(cat "${d}x/cur_freq" 2>/dev/null)
+                [ -n "${d}v" ] && { echo "DEVFREQ=${d}v"; exit 0; }
               ;; esac
             done
             if [ -r /proc/gpufreqv2/gpufreq_status ]; then
@@ -142,13 +143,14 @@ class RuntimeMetricsReader(context: Context, private val shell: ShellEngine) {
 
     /** Raw read-only probe used by diagnostics when GPU frequency still cannot be parsed. */
     fun gpuProbeReport(): String {
+        val d = '$'
         val cmd = """
             echo '[ged]'
-            for f in /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/current_frequency /sys/kernel/ged/hal/gpu_freq /sys/kernel/ged/gpu_freq; do [ -e "$f" ] && { ls -l "$f" 2>/dev/null; cat "$f" 2>/dev/null | head -n2; }; done
+            for f in /sys/kernel/ged/hal/current_freqency /sys/kernel/ged/hal/current_frequency /sys/kernel/ged/hal/gpu_freq /sys/kernel/ged/gpu_freq; do [ -e "${d}f" ] && { ls -l "${d}f" 2>/dev/null; cat "${d}f" 2>/dev/null | head -n2; }; done
             echo '[gpufreqv2]'
             if [ -e /proc/gpufreqv2/gpufreq_status ]; then ls -l /proc/gpufreqv2/gpufreq_status 2>/dev/null; grep -Ei 'STACK[- ]?OPP|GPU[- ]?OPP|freq|fgpu' /proc/gpufreqv2/gpufreq_status 2>/dev/null | head -n20; else echo missing; fi
             echo '[devfreq]'
-            for d in /sys/class/devfreq/*; do [ -d "$d" ] || continue; n=$(cat "$d/name" 2>/dev/null); case "$n $(basename "$d")" in *gpu*|*GPU*|*mali*|*MALI*) echo "$d name=$n cur=$(cat "$d/cur_freq" 2>/dev/null)";; esac; done
+            for x in /sys/class/devfreq/*; do [ -d "${d}x" ] || continue; n=${d}(cat "${d}x/name" 2>/dev/null); case "${d}n ${d}(basename "${d}x")" in *gpu*|*GPU*|*mali*|*MALI*) echo "${d}x name=${d}n cur=${d}(cat "${d}x/cur_freq" 2>/dev/null)";; esac; done
         """.trimIndent()
         val r = runRead(cmd, 3000)
         return (r.out + if (r.err.isNotBlank()) "\nERR=${r.err}" else "").trim().ifBlank { "no gpu probe output" }.take(3000)
