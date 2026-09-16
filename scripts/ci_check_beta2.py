@@ -1,7 +1,7 @@
 from pathlib import Path
 import sys
 
-root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("buildsrc/perfpilot_v1")
+root = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("buildsrc/PerfPilot")
 checks = []
 
 def require(path, text, label):
@@ -15,7 +15,10 @@ require("app/src/main/java/com/oai/perfpilot/PerfController.kt", "回读验证�
 require("app/src/main/java/com/oai/perfpilot/PerfManagerClient.kt", "perfmanager", "MTK perfmanager client")
 require("app/src/main/java/com/oai/perfpilot/DeviceProfile.kt", "/sys/kernel/fpsgo", "FPSGO resolver roots")
 require("app/src/main/java/com/oai/perfpilot/DeviceProfile.kt", "/sys/kernel/ged", "GED resolver roots")
-require("app/build.gradle.kts", 'versionName = "1.0.0-beta2-k90"', "beta2 version")
+require("app/build.gradle.kts", 'versionName = "1.0.0-beta3-k90-crashfix"', "beta3 crashfix version")
+require("app/src/main/java/com/oai/perfpilot/DiagnosticsActivity.kt", "showDiagnosticError", "diagnostics exception guard")
+require("app/src/main/java/com/oai/perfpilot/AdvancedTuningActivity.kt", "showFallback", "advanced page startup guard")
+require("app/src/main/java/com/oai/perfpilot/ParameterActivity.kt", "读取异常", "parameter read guard")
 
 source = "\n".join(
     p.read_text(encoding="utf-8", errors="ignore")
