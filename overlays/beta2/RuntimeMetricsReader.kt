@@ -78,12 +78,12 @@ class RuntimeMetricsReader(private val shell: ShellEngine) {
     private fun readFps(): String {
         val r = runRead("dumpsys SurfaceFlinger --latency 2>/dev/null", 2600)
         if (!r.ok || r.out.isBlank()) return "N/A"
-        val stamps = r.out.lineSequence().drop(1).mapNotNull { line ->
+        val stamps: List<Long> = r.out.lineSequence().drop(1).mapNotNull { line ->
             val cols = line.trim().split(Regex("\\s+"))
             cols.getOrNull(1)?.toLongOrNull()?.takeIf { it > 0L }
-        }.takeLast(90)
+        }.toList().takeLast(90)
         if (stamps.size < 3) return "N/A"
-        val diffs = stamps.zipWithNext { a, b -> b - a }.filter { it in 1_000_000L..100_000_000L }
+        val diffs: List<Long> = stamps.zipWithNext { a: Long, b: Long -> b - a }.filter { d -> d in 1_000_000L..100_000_000L }
         if (diffs.isEmpty()) return "N/A"
         val avg = diffs.average()
         val fps = 1_000_000_000.0 / avg
