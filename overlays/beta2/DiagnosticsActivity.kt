@@ -14,7 +14,9 @@ import android.widget.Toast
 import java.util.concurrent.Executors
 
 class DiagnosticsActivity : Activity() {
+    private lateinit var shell: ShellEngine
     private lateinit var perf: PerfController
+    private lateinit var metrics: RuntimeMetricsReader
     private val worker = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
     private lateinit var box: LinearLayout
@@ -24,7 +26,9 @@ class DiagnosticsActivity : Activity() {
         super.onCreate(savedInstanceState)
         try {
             UiKit.applyWindow(this)
-            perf = PerfController(this, ShellEngine(this))
+            shell = ShellEngine(this)
+            perf = PerfController(this, shell)
+            metrics = RuntimeMetricsReader(this, shell)
             setContentView(buildUi())
             runTests()
         } catch (t: Throwable) {
@@ -39,7 +43,7 @@ class DiagnosticsActivity : Activity() {
             setPadding(UiKit.dp(this@DiagnosticsActivity, 16), UiKit.dp(this@DiagnosticsActivity, 18), UiKit.dp(this@DiagnosticsActivity, 16), UiKit.dp(this@DiagnosticsActivity, 32))
         }
         root.addView(UiKit.row(this, UiKit.smallButton(this, "← 返回") { finish() }, UiKit.smallButton(this, "重新检测", true) { runTests() }))
-        root.addView(UiKit.sectionTitle(this, "性能接口诊断", "只读检测 Shizuku、perfmanager、PowerHAL、FPSGO、GED 和 CPUFreq。"))
+        root.addView(UiKit.sectionTitle(this, "性能接口诊断", "只读检测 Shizuku、perfmanager、PowerHAL、FPSGO、GED、GPUFreq 和 CPUFreq。"))
         box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(box)
         root.addView(UiKit.gap(this, 12))
@@ -61,7 +65,19 @@ class DiagnosticsActivity : Activity() {
         box.addView(UiKit.card(this, 14).apply { addView(UiKit.text(this@DiagnosticsActivity, "正在检测…", 13f, UiKit.MUTED)) })
         worker.execute {
             try {
-                val list = perf.diagnostics()
+                val list = perf.diagnostics().toMutableList()
+                val gpu = metrics.readGpu()
+                list += PerfController.Diagnostic(
+                    "GPU 实时频率",
+                    if (gpu != "N/A") PerfController.Diagnostic.State.OK else PerfController.Diagnostic.State.WARN,
+                    if (gpu != "N/A") "当前=$gpu" else "未解析到当前频率。下面保留 MT6993 原始只读探测，便于继续适配：\n${metrics.gpuProbeReport()}"
+                )
+                val battery = metrics.readBatteryTemperature()
+                list += PerfController.Diagnostic(
+                    "电池温度",
+                    if (battery != "N/A") PerfController.Diagnostic.State.OK else PerfController.Diagnostic.State.WARN,
+                    if (battery != "N/A") "Android 电池温度=$battery（不再拿最热 thermal zone 冒充整机温度）" else "系统没有返回可验证的电池温度"
+                )
                 val report = buildString {
                     append("PerfPilot K90 Max diagnostics\n")
                     list.forEach { append("[${it.state}] ${it.name}: ${it.detail}\n") }
