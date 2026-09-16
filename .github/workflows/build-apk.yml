@@ -28,45 +28,24 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Reassemble base source
+      - name: Extract PerfPilot v1 source
         run: |
-          cat source_chunks/part-*.txt | base64 -d > PerfPilot-source-ui.zip
-          test "$(stat -c%s PerfPilot-source-ui.zip)" -eq 31092
           rm -rf buildsrc
           mkdir buildsrc
-          unzip -q PerfPilot-source-ui.zip -d buildsrc
-          test -f buildsrc/PerfPilot/settings.gradle.kts
-
-      - name: Apply v0.4 Shizuku patch
-        run: |
-          cat v04_patch_chunks/part-* > /tmp/perfpilot-v04.patch
-          test "$(stat -c%s /tmp/perfpilot-v04.patch)" -eq 29113
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('/tmp/perfpilot-v04.patch')
-          s = p.read_text(encoding='utf-8').replace('无 "Root', '无 Root')
-          p.write_text(s, encoding='utf-8')
-          PY
-          patch -p1 -d buildsrc/PerfPilot < /tmp/perfpilot-v04.patch
-          grep -q 'versionName = "0.4.0"' buildsrc/PerfPilot/app/build.gradle.kts
-          test -f buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/PrivilegedShellService.kt
-
-      - name: Apply v0.4.1 Shizuku connection fix
-        run: |
-          python3 patch_v041_shizuku.py
-          grep -q 'rikka.shizuku.ShizukuProvider' buildsrc/PerfPilot/app/src/main/AndroidManifest.xml
-          grep -q 'versionName = "0.4.1"' buildsrc/PerfPilot/app/build.gradle.kts
+          unzip -q v1/PerfPilot-v1-source.zip -d buildsrc
+          test -f buildsrc/perfpilot_v1/settings.gradle.kts
+          grep -q 'versionName = "1.0.0"' buildsrc/perfpilot_v1/app/build.gradle.kts
 
       - name: Build debug APK
-        working-directory: buildsrc/PerfPilot
+        working-directory: buildsrc/perfpilot_v1
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Copy APK
-        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v0.4.1-shizuku-fix-debug.apk
+        run: cp buildsrc/perfpilot_v1/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v1.0-powerhal-glass-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PerfPilot-v0.4.1-shizuku-fix-debug-apk
-          path: PerfPilot-v0.4.1-shizuku-fix-debug.apk
+          name: PerfPilot-v1.0-powerhal-glass-debug-apk
+          path: PerfPilot-v1.0-powerhal-glass-debug.apk
           if-no-files-found: error
