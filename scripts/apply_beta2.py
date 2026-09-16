@@ -16,6 +16,7 @@ java_files = [
     "ParameterActivity.kt",
     "PrivilegedShellService.kt",
     "ShellEngine.kt",
+    "RuntimeMetricsReader.kt",
     "MainActivity.kt",
     "GameProfilesActivity.kt",
     "AdvancedTuningActivity.kt",
@@ -32,4 +33,4 @@ shutil.copy2(overlay / "app-build.gradle.kts", root / "app/build.gradle.kts")
 shutil.copy2(overlay / "AndroidManifest.xml", root / "app/src/main/AndroidManifest.xml")
 shutil.copy2(overlay / "styles.xml", root / "app/src/main/res/values/styles.xml")
 
-print("Applied PerfPilot 1.0 beta2 K90 Max full overlay onto trusted v0.3 source")
+print("Applied PerfPilot K90 Max / Dimensity 9500 overlay onto trusted source")
