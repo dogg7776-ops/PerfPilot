@@ -28,13 +28,13 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Reassemble PerfPilot v1 base source
+      - name: Extract PerfPilot v1 base source
         run: |
-          cat v1_chunks/part-* | base64 -d > PerfPilot-v1-source.zip
-          unzip -t PerfPilot-v1-source.zip >/dev/null
+          test -f v1/PerfPilot-v1-source.zip
+          unzip -t v1/PerfPilot-v1-source.zip >/dev/null
           rm -rf buildsrc
           mkdir buildsrc
-          unzip -q PerfPilot-v1-source.zip -d buildsrc
+          unzip -q v1/PerfPilot-v1-source.zip -d buildsrc
           test -f buildsrc/perfpilot_v1/settings.gradle.kts
           test -f buildsrc/perfpilot_v1/app/build.gradle.kts
 
