@@ -51,16 +51,22 @@ jobs:
           grep -q 'versionName = "0.4.0"' buildsrc/PerfPilot/app/build.gradle.kts
           test -f buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/PrivilegedShellService.kt
 
+      - name: Apply v0.4.1 Shizuku connection fix
+        run: |
+          python3 patch_v041_shizuku.py
+          grep -q 'rikka.shizuku.ShizukuProvider' buildsrc/PerfPilot/app/src/main/AndroidManifest.xml
+          grep -q 'versionName = "0.4.1"' buildsrc/PerfPilot/app/build.gradle.kts
+
       - name: Build debug APK
         working-directory: buildsrc/PerfPilot
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Copy APK
-        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v0.4-shizuku-debug.apk
+        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v0.4.1-shizuku-fix-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PerfPilot-v0.4-shizuku-debug-apk
-          path: PerfPilot-v0.4-shizuku-debug.apk
+          name: PerfPilot-v0.4.1-shizuku-fix-debug-apk
+          path: PerfPilot-v0.4.1-shizuku-fix-debug.apk
           if-no-files-found: error
