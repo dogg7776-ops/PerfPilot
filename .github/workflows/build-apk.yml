@@ -41,6 +41,12 @@ jobs:
         run: |
           cat v04_patch_chunks/part-* > /tmp/perfpilot-v04.patch
           test "$(stat -c%s /tmp/perfpilot-v04.patch)" -eq 29113
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/perfpilot-v04.patch')
+          s = p.read_text(encoding='utf-8').replace('无 "Root', '无 Root')
+          p.write_text(s, encoding='utf-8')
+          PY
           patch -p1 -d buildsrc/PerfPilot < /tmp/perfpilot-v04.patch
           grep -q 'versionName = "0.4.0"' buildsrc/PerfPilot/app/build.gradle.kts
           test -f buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/PrivilegedShellService.kt
