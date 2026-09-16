@@ -42,12 +42,13 @@ jobs:
       - name: Apply proven crash-safe base patch
         run: python3 patch_crashsafe.py
 
-      - name: Apply K90 Max / Dimensity 9500 beta4 runtime-fix overlay
+      - name: Apply K90 Max / Dimensity 9500 beta5 Shizuku compatibility overlay
         run: |
           python3 scripts/apply_beta2.py
-          grep -q 'versionName = "1.0.0-beta4-k90-runtimefix"' buildsrc/PerfPilot/app/build.gradle.kts
+          grep -q 'versionName = "1.0.0-beta5-k90-shizukucompat"' buildsrc/PerfPilot/app/build.gradle.kts
           grep -q 'MT6993' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/DeviceProfile.kt
-          grep -q 'RuntimeMetricsReader' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/MainActivity.kt
+          grep -q 'execViaLegacyRemoteProcess' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/ShellEngine.kt
+          grep -q '/proc/gpufreqv2/gpufreq_status' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt
 
       - name: Static integration and safety checks
         run: python3 scripts/ci_check_beta2.py buildsrc/PerfPilot
@@ -57,11 +58,11 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Copy APK
-        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v1.0-beta4-k90-runtimefix-debug.apk
+        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v1.0-beta5-k90-shizukucompat-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PerfPilot-v1.0-beta4-k90-runtimefix-debug-apk
-          path: PerfPilot-v1.0-beta4-k90-runtimefix-debug.apk
+          name: PerfPilot-v1.0-beta5-k90-shizukucompat-debug-apk
+          path: PerfPilot-v1.0-beta5-k90-shizukucompat-debug.apk
           if-no-files-found: error
