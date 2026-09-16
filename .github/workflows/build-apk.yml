@@ -28,31 +28,33 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Extract PerfPilot v1 base source
+      - name: Reassemble trusted v0.3 base source
         run: |
-          test -f v1/PerfPilot-v1-source.zip
-          unzip -t v1/PerfPilot-v1-source.zip >/dev/null
+          cat source_chunks/part-*.txt | base64 -d > PerfPilot-ui-source.zip
+          test "$(stat -c%s PerfPilot-ui-source.zip)" -eq 31092
+          unzip -t PerfPilot-ui-source.zip >/dev/null
           rm -rf buildsrc
           mkdir buildsrc
-          unzip -q v1/PerfPilot-v1-source.zip -d buildsrc
-          test -f buildsrc/perfpilot_v1/settings.gradle.kts
-          test -f buildsrc/perfpilot_v1/app/build.gradle.kts
+          unzip -q PerfPilot-ui-source.zip -d buildsrc
+          test -f buildsrc/PerfPilot/settings.gradle.kts
+          test -f buildsrc/PerfPilot/app/build.gradle.kts
 
-      - name: Apply K90 Max / Dimensity 9500 beta2 overlay
+      - name: Apply K90 Max / Dimensity 9500 beta2 full overlay
         run: |
           python3 scripts/apply_beta2.py
-          grep -q 'versionName = "1.0.0-beta2-k90"' buildsrc/perfpilot_v1/app/build.gradle.kts
-          grep -q 'MT6993' buildsrc/perfpilot_v1/app/src/main/java/com/oai/perfpilot/DeviceProfile.kt
+          grep -q 'versionName = "1.0.0-beta2-k90"' buildsrc/PerfPilot/app/build.gradle.kts
+          grep -q 'MT6993' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/DeviceProfile.kt
+          grep -q '165' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/DeviceProfile.kt
 
       - name: Static integration and safety checks
-        run: python3 scripts/ci_check_beta2.py buildsrc/perfpilot_v1
+        run: python3 scripts/ci_check_beta2.py buildsrc/PerfPilot
 
       - name: Build debug APK
-        working-directory: buildsrc/perfpilot_v1
+        working-directory: buildsrc/PerfPilot
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Copy APK
-        run: cp buildsrc/perfpilot_v1/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v1.0-beta2-k90-debug.apk
+        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v1.0-beta2-k90-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
