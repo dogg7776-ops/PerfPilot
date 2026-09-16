@@ -28,18 +28,21 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Reassemble trusted v0.3 base source
+      - name: Reassemble trusted PerfPilot base source
         run: |
-          cat source_chunks/part-*.txt | base64 -d > PerfPilot-ui-source.zip
-          test "$(stat -c%s PerfPilot-ui-source.zip)" -eq 31092
-          unzip -t PerfPilot-ui-source.zip >/dev/null
+          cat source_chunks/part-*.txt | base64 -d > PerfPilot-base.zip
+          test "$(stat -c%s PerfPilot-base.zip)" -eq 31092
+          unzip -t PerfPilot-base.zip >/dev/null
           rm -rf buildsrc
           mkdir buildsrc
-          unzip -q PerfPilot-ui-source.zip -d buildsrc
+          unzip -q PerfPilot-base.zip -d buildsrc
           test -f buildsrc/PerfPilot/settings.gradle.kts
           test -f buildsrc/PerfPilot/app/build.gradle.kts
 
-      - name: Apply K90 Max / Dimensity 9500 beta2 full overlay
+      - name: Apply proven crash-safe base patch
+        run: python3 patch_crashsafe.py
+
+      - name: Apply K90 Max / Dimensity 9500 beta2 overlay
         run: |
           python3 scripts/apply_beta2.py
           grep -q 'versionName = "1.0.0-beta2-k90"' buildsrc/PerfPilot/app/build.gradle.kts
