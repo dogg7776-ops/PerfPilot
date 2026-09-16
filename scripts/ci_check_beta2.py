@@ -15,10 +15,15 @@ require("app/src/main/java/com/oai/perfpilot/PerfController.kt", "回读验证�
 require("app/src/main/java/com/oai/perfpilot/PerfManagerClient.kt", "perfmanager", "MTK perfmanager client")
 require("app/src/main/java/com/oai/perfpilot/DeviceProfile.kt", "/sys/kernel/fpsgo", "FPSGO resolver roots")
 require("app/src/main/java/com/oai/perfpilot/DeviceProfile.kt", "/sys/kernel/ged", "GED resolver roots")
-require("app/build.gradle.kts", 'versionName = "1.0.0-beta3-k90-crashfix"', "beta3 crashfix version")
+require("app/build.gradle.kts", 'versionName = "1.0.0-beta4-k90-runtimefix"', "beta4 runtime fix version")
 require("app/src/main/java/com/oai/perfpilot/DiagnosticsActivity.kt", "showDiagnosticError", "diagnostics exception guard")
 require("app/src/main/java/com/oai/perfpilot/AdvancedTuningActivity.kt", "showFallback", "advanced page startup guard")
 require("app/src/main/java/com/oai/perfpilot/ParameterActivity.kt", "读取异常", "parameter read guard")
+require("app/src/main/java/com/oai/perfpilot/UiKit.kt", "decorView.post", "HyperOS deferred insets setup")
+require("app/src/main/java/com/oai/perfpilot/UiKit.kt", "Window styling must never prevent", "window styling crash guard")
+require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "sampleProcStat", "independent CPU telemetry")
+require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "SurfaceFlinger --latency", "SurfaceFlinger FPS probe")
+require("app/src/main/java/com/oai/perfpilot/MainActivity.kt", "已授权，但执行通道异常", "Shizuku execution health surfaced")
 
 source = "\n".join(
     p.read_text(encoding="utf-8", errors="ignore")
