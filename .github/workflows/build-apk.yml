@@ -28,7 +28,7 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Reassemble and extract source
+      - name: Reassemble base source
         run: |
           cat source_chunks/part-*.txt | base64 -d > PerfPilot-source-ui.zip
           test "$(stat -c%s PerfPilot-source-ui.zip)" -eq 31092
@@ -37,19 +37,24 @@ jobs:
           unzip -q PerfPilot-source-ui.zip -d buildsrc
           test -f buildsrc/PerfPilot/settings.gradle.kts
 
-      - name: Apply crash-safe patch
-        run: python3 patch_crashsafe.py
+      - name: Apply v0.4 Shizuku patch
+        run: |
+          cat v04_patch_chunks/part-* > /tmp/perfpilot-v04.patch
+          test "$(stat -c%s /tmp/perfpilot-v04.patch)" -eq 29113
+          patch -p1 -d buildsrc/PerfPilot < /tmp/perfpilot-v04.patch
+          grep -q 'versionName = "0.4.0"' buildsrc/PerfPilot/app/build.gradle.kts
+          test -f buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/PrivilegedShellService.kt
 
       - name: Build debug APK
         working-directory: buildsrc/PerfPilot
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Copy APK
-        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v0.3.2-pagesafe-debug.apk
+        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v0.4-shizuku-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PerfPilot-v0.3.2-pagesafe-debug-apk
-          path: PerfPilot-v0.3.2-pagesafe-debug.apk
+          name: PerfPilot-v0.4-shizuku-debug-apk
+          path: PerfPilot-v0.4-shizuku-debug.apk
           if-no-files-found: error

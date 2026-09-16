@@ -1,0 +1,132 @@
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -11,8 +11,8 @@
+         applicationId = "com.oai.perfpilot"
+         minSdk = 26
+         targetSdk = 36
+-        versionCode = 3
+-        versionName = "0.3.0"
++        versionCode = 5
++        versionName = "0.4.0"
+     }
+ 
+     buildTypes {
+--- a/app/src/main/java/com/oai/perfpilot/AdvancedTuningActivity.kt
++++ b/app/src/main/java/com/oai/perfpilot/AdvancedTuningActivity.kt
+@@ -23,11 +23,15 @@
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+-        UiKit.applyWindow(this)
+-        shell = ShellEngine(this)
+-        perf = PerfController(this, shell)
+-        setContentView(buildUi())
+-        renderParams()
++        try {
++            try { UiKit.applyWindow(this) } catch (_: Throwable) { }
++            shell = ShellEngine(this)
++            perf = PerfController(this, shell)
++            setContentView(buildUi())
++            renderParams()
++        } catch (t: Throwable) {
++            showLaunchFallback(t)
++        }
+     }
+ 
+     override fun onDestroy() {
+@@ -96,7 +100,7 @@
+     private fun paramCard(spec: PerfController.KernelParamSpec): View {
+         val card = UiKit.card(this, 15, UiKit.SURFACE, 19)
+         val currentValue = UiKit.text(this, "读取中…", 17f, UiKit.PRIMARY, true)
+-        val stateChip = UiKit.chip(this, "需要 Root", true)
++        val stateChip = UiKit.chip(this, "优先 Shizuku / 可回退 Root", true)
+         val top = LinearLayout(this).apply {
+             orientation = LinearLayout.HORIZONTAL
+             gravity = Gravity.TOP
+@@ -200,12 +204,23 @@
+ 
+     private fun loadCurrent(spec: PerfController.KernelParamSpec, view: TextView, onReady: (Int?, Boolean) -> Unit) {
+         worker.execute {
+-            val current = perf.readKernelParam(spec.path)?.toIntOrNull()
+-            val rootAvailable = shell.hasRoot()
+-            main.post {
+-                view.text = current?.toString() ?: "节点不存在 / 不可读"
+-                view.setTextColor(if (current != null) UiKit.PRIMARY else UiKit.MUTED)
+-                onReady(current, rootAvailable)
++            try {
++                val current = perf.readKernelParam(spec.path)?.toIntOrNull()
++                val privilegedAvailable = shell.hasPrivilegedWrite()
++                main.post {
++                    if (isFinishing || isDestroyed) return@post
++                    view.text = current?.toString() ?: "节点不存在 / 不可读"
++                    view.setTextColor(if (current != null) UiKit.PRIMARY else UiKit.MUTED)
++                    onReady(current, privilegedAvailable)
++                }
++            } catch (t: Throwable) {
++                main.post {
++                    if (!isFinishing && !isDestroyed) {
++                        view.text = "读取失败：${t.javaClass.simpleName}"
++                        view.setTextColor(UiKit.WARNING)
++                        onReady(null, false)
++                    }
++                }
+             }
+         }
+     }
+@@ -238,5 +253,19 @@
+         }
+     }
+ 
++    private fun showLaunchFallback(t: Throwable) {
++        val message = "FPSGO / GED 页面启动失败\n\n${t.javaClass.simpleName}: ${t.message ?: "未知错误"}\n\n这个页面已被安全模式接管，不会再直接闪退。请截图此页给我。"
++        val box = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(UiKit.dp(this@AdvancedTuningActivity, 20), UiKit.dp(this@AdvancedTuningActivity, 28), UiKit.dp(this@AdvancedTuningActivity, 20), UiKit.dp(this@AdvancedTuningActivity, 28))
++            setBackgroundColor(UiKit.BG)
++            addView(UiKit.text(this@AdvancedTuningActivity, "FPSGO / GED 参数", 24f, UiKit.TEXT, true))
++            addView(UiKit.text(this@AdvancedTuningActivity, "安全模式", 16f, UiKit.WARNING, true).apply { setPadding(0, UiKit.dp(this@AdvancedTuningActivity, 12), 0, 0) })
++            addView(UiKit.text(this@AdvancedTuningActivity, message, 13f, UiKit.MUTED).apply { setPadding(0, UiKit.dp(this@AdvancedTuningActivity, 14), 0, 0) })
++            addView(UiKit.button(this@AdvancedTuningActivity, "返回首页", false) { finish() }.apply { setPadding(0, UiKit.dp(this@AdvancedTuningActivity, 12), 0, 0) })
++        }
++        setContentView(box)
++    }
++
+     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+ }
+--- a/app/src/main/java/com/oai/perfpilot/GameProfilesActivity.kt
++++ b/app/src/main/java/com/oai/perfpilot/GameProfilesActivity.kt
+@@ -39,12 +39,16 @@
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+-        UiKit.applyWindow(this)
+-        shell = ShellEngine(this)
+-        perf = PerfController(this, shell)
+-        store = GameProfileStore(this)
+-        setContentView(buildUi())
+-        renderProfiles()
++        try {
++            try { UiKit.applyWindow(this) } catch (_: Throwable) { }
++            shell = ShellEngine(this)
++            perf = PerfController(this, shell)
++            store = GameProfileStore(this)
++            setContentView(buildUi())
++            renderProfiles()
++        } catch (t: Throwable) {
++            showLaunchFallback(t)
++        }
+     }
+ 
+     override fun onDestroy() {
+@@ -86,7 +90,7 @@
+         renderRateOptions()
+ 
+         configCard.addView(UiKit.divider(this))
+-        configCard.addView(UiKit.text(this, "CPU Governor（Root）", 15f, UiKit.TEXT, true))
++        configCard.addView(UiKit.text(this, "CPU Governor", 15f, UiKit.TEXT, true))
+         configCard.addView(UiKit.text(this, "不支持的 governor 会自动跳过，不会强写。", 11.5f, UiKit.MUTED).apply { setPadding(0, UiKit.dp(this@GameProfilesActivity, 4), 0, UiKit.dp(this@GameProfilesActivity, 10)) })
+         governorBox = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+         configCard.addView(governorBox)
+@@ -107,7 +111,7 @@
+             }
+         }

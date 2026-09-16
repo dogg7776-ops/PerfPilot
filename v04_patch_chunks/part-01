@@ -1,0 +1,122 @@
+         configCard.addView(fpsgoSwitch)
+-        configCard.addView(UiKit.text(this, "需要 Root 且节点存在才会写入；否则只会给出提示。", 11.5f, UiKit.MUTED).apply { setPadding(0, UiKit.dp(this@GameProfilesActivity, 5), 0, 0) })
++        configCard.addView(UiKit.text(this, "优先 Shizuku / 可回退 Root 且节点存在才会写入；否则只会给出提示。", 11.5f, UiKit.MUTED).apply { setPadding(0, UiKit.dp(this@GameProfilesActivity, 5), 0, 0) })
+ 
+         configCard.addView(UiKit.gap(this, 16))
+         configCard.addView(UiKit.row(
+@@ -336,7 +340,7 @@
+     private fun restoreAll() {
+         worker.execute {
+             val a = perf.restoreSettings()
+-            val b = if (shell.hasRoot()) perf.restoreKernelNodes() else "内核参数：无 Root，跳过"
++            val b = if (shell.hasPrivilegedWrite()) perf.restoreKernelNodes() else "内核参数：未授权 Shizuku 且无 Root，跳过"
+             main.post {
+                 AlertDialog.Builder(this)
+                     .setTitle("恢复结果")
+@@ -347,5 +351,19 @@
+         }
+     }
+ 
++    private fun showLaunchFallback(t: Throwable) {
++        val message = "游戏独立配置页启动失败\n\n${t.javaClass.simpleName}: ${t.message ?: "未知错误"}\n\n这个页面已被安全模式接管，不会再直接闪退。请截图此页给我。"
++        val box = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(UiKit.dp(this@GameProfilesActivity, 20), UiKit.dp(this@GameProfilesActivity, 28), UiKit.dp(this@GameProfilesActivity, 20), UiKit.dp(this@GameProfilesActivity, 28))
++            setBackgroundColor(UiKit.BG)
++            addView(UiKit.text(this@GameProfilesActivity, "游戏独立配置", 24f, UiKit.TEXT, true))
++            addView(UiKit.text(this@GameProfilesActivity, "安全模式", 16f, UiKit.WARNING, true).apply { setPadding(0, UiKit.dp(this@GameProfilesActivity, 12), 0, 0) })
++            addView(UiKit.text(this@GameProfilesActivity, message, 13f, UiKit.MUTED).apply { setPadding(0, UiKit.dp(this@GameProfilesActivity, 14), 0, 0) })
++            addView(UiKit.button(this@GameProfilesActivity, "返回首页", false) { finish() }.apply { setPadding(0, UiKit.dp(this@GameProfilesActivity, 12), 0, 0) })
++        }
++        setContentView(box)
++    }
++
+     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+ }
+--- a/app/src/main/java/com/oai/perfpilot/MainActivity.kt
++++ b/app/src/main/java/com/oai/perfpilot/MainActivity.kt
+@@ -37,6 +37,7 @@
+     private val main = Handler(Looper.getMainLooper())
+     private val permCode = 5001
+     private var startOverlayAfterPermission = false
++    private var shizukuListenerRegistered = false
+     @Volatile private var metricsEnabled = false
+ 
+     private val permissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+@@ -49,22 +50,33 @@
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+-        UiKit.applyWindow(this)
++        try { UiKit.applyWindow(this) } catch (_: Throwable) { }
+         shell = ShellEngine(this)
+         perf = PerfController(this, shell)
+-        Shizuku.addRequestPermissionResultListener(permissionListener)
+-        setContentView(buildUi())
+-        refreshStatus()
++        try {
++            Shizuku.addRequestPermissionResultListener(permissionListener)
++            shizukuListenerRegistered = true
++        } catch (_: Throwable) {
++            shizukuListenerRegistered = false
++        }
++        try {
++            setContentView(buildUi())
++            refreshStatus()
++        } catch (t: Throwable) {
++            showLaunchFallback(t)
++        }
+     }
+ 
+     override fun onResume() {
+         super.onResume()
+-        if (startOverlayAfterPermission && Settings.canDrawOverlays(this)) {
+-            startOverlayAfterPermission = false
+-            startOverlay()
+-        }
+-        refreshStatus()
+-        startMetricsLoop()
++        try {
++            if (startOverlayAfterPermission && Settings.canDrawOverlays(this)) {
++                startOverlayAfterPermission = false
++                startOverlay()
++            }
++            if (::shizukuValue.isInitialized) refreshStatus()
++            if (::cpuValue.isInitialized) main.postDelayed({ startMetricsLoop() }, 350)
++        } catch (_: Throwable) { }
+     }
+ 
+     override fun onPause() {
+@@ -74,7 +86,9 @@
+ 
+     override fun onDestroy() {
+         metricsEnabled = false
+-        Shizuku.removeRequestPermissionResultListener(permissionListener)
++        if (shizukuListenerRegistered) {
++            try { Shizuku.removeRequestPermissionResultListener(permissionListener) } catch (_: Throwable) { }
++        }
+         worker.shutdownNow()
+         super.onDestroy()
+     }
+@@ -128,7 +142,7 @@
+         root.addView(UiKit.row(
+             this,
+             toolTile("FPSGO / GED", "白名单参数调节") { startActivity(Intent(this, AdvancedTuningActivity::class.java)) },
+-            toolTile("CPU Governor", "Root 调度策略") { showCpuActions() }
++            toolTile("CPU Governor", "Shizuku / Root 调度") { showCpuActions() }
+         ))
+         root.addView(UiKit.gap(this, 8))
+         root.addView(UiKit.row(
+@@ -181,7 +195,9 @@
+ 
+     private fun deviceCard(): View {
+         val model = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+-        val soc = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL.ifBlank { Build.HARDWARE } else Build.HARDWARE
++        val soc = try {
++            if (Build.VERSION.SDK_INT >= 31) (Build.SOC_MODEL ?: Build.HARDWARE).ifBlank { Build.HARDWARE } else Build.HARDWARE
++        } catch (_: Throwable) { Build.HARDWARE ?: "未知" }
+         val am = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+         val mi = ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }
+         val ramGb = (mi.totalMem / 1073741824.0).roundToInt()
+@@ -201,7 +217,7 @@
+                

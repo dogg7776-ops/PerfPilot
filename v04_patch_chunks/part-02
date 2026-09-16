@@ -1,0 +1,105 @@
+ UiKit.card(this@MainActivity, 12, UiKit.PRIMARY_DARK, 18).apply {
+                     addView(UiKit.text(this@MainActivity, "控制模式", 11.5f, UiKit.MUTED, true))
+                     addView(UiKit.text(this@MainActivity, "自动分级", 17f, UiKit.PRIMARY, true).apply { setPadding(0, UiKit.dp(this@MainActivity, 5), 0, 0) })
+-                    addView(UiKit.text(this@MainActivity, "Root > Shizuku > 普通", 10.5f, UiKit.MUTED).apply { setPadding(0, UiKit.dp(this@MainActivity, 4), 0, 0) })
++                    addView(UiKit.text(this@MainActivity, "Shizuku > Root > 普通", 10.5f, UiKit.MUTED).apply { setPadding(0, UiKit.dp(this@MainActivity, 4), 0, 0) })
+                 }
+             ))
+         }
+@@ -321,7 +337,7 @@
+     private fun restoreAll() {
+         runTask("系统恢复") {
+             val a = perf.restoreSettings()
+-            val b = if (shell.hasRoot()) perf.restoreKernelNodes() else "内核参数：无 Root，跳过"
++            val b = if (shell.hasPrivilegedWrite()) perf.restoreKernelNodes() else "内核参数：未授权 Shizuku 且无 Root，跳过"
+             "$a\n\n$b"
+         }
+     }
+@@ -347,15 +363,20 @@
+     }
+ 
+     private fun refreshStatus() {
++        if (!::shizukuValue.isInitialized || worker.isShutdown) return
+         worker.execute {
+-            val shizuku = shell.hasShizukuPermission()
+-            val root = shell.hasRoot()
+-            val overlay = Settings.canDrawOverlays(this)
+-            main.post {
+-                setState(shizukuValue, shizuku, if (shizuku) "● 已授权" else if (shell.hasShizukuBinder()) "○ 未授权" else "○ 未运行")
+-                setState(rootValue, root, if (root) "● 已获取" else "○ 未获取")
+-                setState(overlayValue, overlay, if (overlay) "● 已授权" else "○ 未授权")
+-            }
++            try {
++                val shizuku = shell.hasShizukuPermission()
++                val root = shell.hasRoot()
++                val binder = shell.hasShizukuBinder()
++                val overlay = Settings.canDrawOverlays(this)
++                main.post {
++                    if (isFinishing || !::shizukuValue.isInitialized) return@post
++                    setState(shizukuValue, shizuku, if (shizuku) "● 已授权" else if (binder) "○ 未授权" else "○ 未运行")
++                    setState(rootValue, root, if (root) "● 已获取" else "○ 未获取")
++                    setState(overlayValue, overlay, if (overlay) "● 已授权" else "○ 未授权")
++                }
++            } catch (_: Throwable) { }
+         }
+     }
+ 
+@@ -403,5 +424,18 @@
+         }
+     }
+ 
++    private fun showLaunchFallback(t: Throwable) {
++        val message = "PerfPilot 启动保护已接管\n\n${t.javaClass.simpleName}: ${t.message ?: "未知错误"}\n\n请截图这一页发给我，我可以继续定位。"
++        val box = LinearLayout(this).apply {
++            orientation = LinearLayout.VERTICAL
++            setPadding(UiKit.dp(this@MainActivity, 20), UiKit.dp(this@MainActivity, 28), UiKit.dp(this@MainActivity, 20), UiKit.dp(this@MainActivity, 28))
++            setBackgroundColor(UiKit.BG)
++            addView(UiKit.text(this@MainActivity, "PerfPilot", 26f, UiKit.TEXT, true))
++            addView(UiKit.text(this@MainActivity, "安全启动模式", 16f, UiKit.WARNING, true).apply { setPadding(0, UiKit.dp(this@MainActivity, 12), 0, 0) })
++            addView(UiKit.text(this@MainActivity, message, 13f, UiKit.MUTED).apply { setPadding(0, UiKit.dp(this@MainActivity, 14), 0, 0) })
++        }
++        setContentView(box)
++    }
++
+     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+ }
+--- a/app/src/main/java/com/oai/perfpilot/PerfController.kt
++++ b/app/src/main/java/com/oai/perfpilot/PerfController.kt
+@@ -73,7 +73,7 @@
+             qcomKgsl = qcom,
+             writableHint = when (r.mode) {
+                 ShellEngine.Mode.ROOT -> "Root：可写内核节点（仍会逐项检测）"
+-                ShellEngine.Mode.SHIZUKU -> "Shizuku：可执行 shell；多数 /sys 写入仍受 SELinux/权限限制"
++                ShellEngine.Mode.SHIZUKU -> "Shizuku：使用 UID 2000 UserService；优先尝试无 Root 写入"
+                 ShellEngine.Mode.LOCAL -> "普通模式：以监控为主；SurfaceFlinger FPS 需要 Shizuku/Root"
+             }
+         )
+@@ -212,7 +212,13 @@
+ 
+     private fun writeNode(path: String, value: String): ShellEngine.Result {
+         backupFile(path)
+-        return shell.exec("if [ -e ${q(path)} ]; then echo ${q(value)} > ${q(path)}; else echo '节点不存在: ${path}' >&2; exit 2; fi", ShellEngine.Mode.ROOT)
++        val cmd = "if [ -e ${q(path)} ]; then echo ${q(value)} > ${q(path)}; else echo '节点不存在: ${path}' >&2; exit 2; fi"
++        if (shell.hasShizukuPermission()) {
++            val r = shell.exec(cmd, ShellEngine.Mode.SHIZUKU)
++            if (r.ok || !shell.hasRoot()) return r
++        }
++        if (shell.hasRoot()) return shell.exec(cmd, ShellEngine.Mode.ROOT)
++        return shell.exec(cmd, ShellEngine.Mode.LOCAL)
+     }
+ 
+     fun readKernelParam(path: String): String? {
+@@ -235,14 +241,14 @@
+     )
+ 
+     fun writeAdvancedParam(key: String, value: Int): String {
+-        if (!shell.hasRoot()) return "这个操作需要 Root。"
++        if (!shell.hasPrivilegedWrite()) return "需要 Shizuku 授权或 Root；优先使用无 Root 的 Shizuku。"
+         val spec = advancedParams().firstOrNull { it.key == key } ?: return "参数不在白名单中。"
+         if (value !in spec.min..spec.max) return "拒绝写入：$value 超出 ${spec.min}–${spec.max}。"
+         return writeNode(spec.path, value.toString()).pretty()
+     }
+ 
+     fun enableMtkFpsgo(): String {
+-        if (!shell.hasRoot()) return "这个操作需要 Root。Shizuku(shell)通常没有权限写 FPSGO 的 /sys 节点。"
++        if (!shell.hasPrivilegedWrite()) return "需要 Shizuku 授权或 Root；优先使用无 "

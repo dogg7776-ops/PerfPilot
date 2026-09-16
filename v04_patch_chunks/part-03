@@ -1,0 +1,131 @@
+Root 的 Shizuku。"
+         val nodes = listOf(
+             "/sys/kernel/fpsgo/common/fpsgo_enable" to "1",
+             "/sys/kernel/fpsgo/common/force_onoff" to "1",
+@@ -255,7 +261,7 @@
+ 
+     fun setCpuGovernor(governor: String): String {
+         if (governor == "unchanged") return "CPU governor：保持当前设置"
+-        if (!shell.hasRoot()) return "CPU governor 修改需要 Root。"
++        if (!shell.hasPrivilegedWrite()) return "CPU governor 需要 Shizuku 授权或 Root；优先使用无 Root 的 Shizuku。"
+         val cmd = """
+             rc=0
+             for p in /sys/devices/system/cpu/cpufreq/policy*; do
+@@ -266,23 +272,25 @@
+             done
+             exit ${'$'}rc
+         """.trimIndent()
+-        shell.exec("for p in /sys/devices/system/cpu/cpufreq/policy*; do [ -f \"${'$'}p/scaling_governor\" ] && echo \"${'$'}p=${'$'}(cat ${'$'}p/scaling_governor)\"; done", ShellEngine.Mode.ROOT)
++        shell.exec("for p in /sys/devices/system/cpu/cpufreq/policy*; do [ -f \"${'$'}p/scaling_governor\" ] && echo \"${'$'}p=${'$'}(cat ${'$'}p/scaling_governor)\"; done")
+             .out.lineSequence().forEach { line ->
+                 val i = line.indexOf('=')
+                 if (i > 0) backupFile(line.substring(0, i) + "/scaling_governor")
+             }
+-        return shell.exec(cmd, ShellEngine.Mode.ROOT).pretty()
++        val first = if (shell.hasShizukuPermission()) shell.exec(cmd, ShellEngine.Mode.SHIZUKU) else shell.exec(cmd, ShellEngine.Mode.ROOT)
++        if (first.ok || !shell.hasRoot() || first.mode == ShellEngine.Mode.ROOT) return first.pretty()
++        return first.pretty() + "\n\nShizuku 写入失败，Root 回退：\n" + shell.exec(cmd, ShellEngine.Mode.ROOT).pretty()
+     }
+ 
+     fun restoreKernelNodes(): String {
+-        if (!shell.hasRoot()) return "恢复 /sys 参数需要 Root。"
++        if (!shell.hasPrivilegedWrite()) return "恢复内核参数需要 Shizuku 授权或 Root。"
+         val all = prefs.all.filterKeys { it.startsWith("file_") }
+         if (all.isEmpty()) return "没有已备份的内核参数。"
+         val results = mutableListOf<String>()
+         for ((k, vv) in all) {
+             val path = k.removePrefix("file_")
+             val old = vv as? String ?: continue
+-            results += shell.exec("[ -e ${q(path)} ] && echo ${q(old)} > ${q(path)}", ShellEngine.Mode.ROOT).pretty()
++            results += writeNode(path, old).pretty()
+         }
+         val e = prefs.edit()
+         all.keys.forEach { e.remove(it) }
+@@ -311,7 +319,7 @@
+     fun safeGameProfile(): String = buildString {
+         append("刷新率设置：\n").append(setRefreshRate(120)).append("\n\n")
+         append("动画设置：\n").append(setAnimationScale(0.5f)).append("\n\n")
+-        if (shell.hasRoot()) append("FPSGO：\n").append(enableMtkFpsgo())
++        if (shell.hasPrivilegedWrite()) append("FPSGO：\n").append(enableMtkFpsgo())
+     }
+ 
+     fun applyGameProfile(profile: GameProfile): String = buildString {
+--- a/app/src/main/java/com/oai/perfpilot/PrivilegedShellService.kt
++++ b/app/src/main/java/com/oai/perfpilot/PrivilegedShellService.kt
+@@ -0,0 +1,57 @@
++package com.oai.perfpilot
++
++import android.os.Binder
++import android.os.IBinder
++import android.os.Parcel
++import java.io.BufferedReader
++import java.io.InputStreamReader
++import java.util.concurrent.TimeUnit
++
++/**
++ * Runs inside Shizuku UserService process (uid=shell when Shizuku is started with ADB).
++ * It deliberately exposes only one primitive: execute a shell command supplied by our app.
++ */
++class PrivilegedShellService : Binder() {
++
++    override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
++        if (code == IBinder.INTERFACE_TRANSACTION) {
++            reply?.writeString(DESCRIPTOR)
++            return true
++        }
++        if (code == TRANSACTION_EXEC) {
++            data.enforceInterface(DESCRIPTOR)
++            val command = data.readString().orEmpty()
++            val timeoutMs = data.readLong().coerceIn(500L, 30_000L)
++            val result = runCommand(command, timeoutMs)
++            reply?.writeNoException()
++            reply?.writeInt(result.code)
++            reply?.writeString(result.out)
++            reply?.writeString(result.err)
++            return true
++        }
++        return super.onTransact(code, data, reply, flags)
++    }
++
++    private fun runCommand(command: String, timeoutMs: Long): ExecResult {
++        return try {
++            val p = ProcessBuilder("sh", "-c", command).start()
++            val finished = p.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
++            if (!finished) {
++                p.destroy()
++                return ExecResult(124, "", "命令超时")
++            }
++            val out = BufferedReader(InputStreamReader(p.inputStream)).use { it.readText() }
++            val err = BufferedReader(InputStreamReader(p.errorStream)).use { it.readText() }
++            ExecResult(p.exitValue(), out, err)
++        } catch (t: Throwable) {
++            ExecResult(127, "", t.message ?: t.javaClass.simpleName)
++        }
++    }
++
++    private data class ExecResult(val code: Int, val out: String, val err: String)
++
++    companion object {
++        const val DESCRIPTOR = "com.oai.perfpilot.PrivilegedShell"
++        const val TRANSACTION_EXEC = IBinder.FIRST_CALL_TRANSACTION
++    }
++}
+--- a/app/src/main/java/com/oai/perfpilot/ShellEngine.kt
++++ b/app/src/main/java/com/oai/perfpilot/ShellEngine.kt
+@@ -1,9 +1,14 @@
+ package com.oai.perfpilot
+ 
++import android.content.ComponentName
+ import android.content.Context
++import android.content.ServiceConnection
++import android.os.IBinder
++import android.os.Parcel
+ import rikka.shizuku.Shizuku
+ import java.io.BufferedReader
+ import java.io.InputStreamReader
++import java.util.concurrent.CountDownLatch
+ import java.util.concurrent.TimeUnit
+ 
+ class ShellEngine(private val context: Context) {
+@@ -12,7 +17,7 @@
+     data class Result(val code: Int, val out: String, 
