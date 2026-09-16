@@ -11,8 +11,8 @@ android {
         applicationId = "com.oai.perfpilot"
         minSdk = 26
         targetSdk = 36
-        versionCode = 14
-        versionName = "1.0.0-beta5-k90-shizukucompat"
+        versionCode = 15
+        versionName = "1.0.0-beta6-k90-telemetryfix"
     }
 
     buildTypes {
