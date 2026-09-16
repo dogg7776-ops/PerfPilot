@@ -31,17 +31,33 @@ object UiKit {
 
     fun dp(context: Context, value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
 
+    /**
+     * HyperOS 4 can briefly expose a DecorView without an attached WindowInsetsController
+     * during Activity.onCreate. Never let cosmetic system-bar setup crash a functional page.
+     */
     fun applyWindow(activity: Activity) {
-        activity.window.statusBarColor = BG
-        activity.window.navigationBarColor = SURFACE
-        if (Build.VERSION.SDK_INT >= 30) {
-            activity.window.insetsController?.setSystemBarsAppearance(
-                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            )
-        } else {
+        try {
+            activity.window.statusBarColor = BG
+            activity.window.navigationBarColor = SURFACE
             @Suppress("DEPRECATION")
-            activity.window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            run {
+                val nav = if (Build.VERSION.SDK_INT >= 26) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0
+                activity.window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or nav
+            }
+            if (Build.VERSION.SDK_INT >= 30) {
+                activity.window.decorView.post {
+                    try {
+                        activity.window.insetsController?.setSystemBarsAppearance(
+                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                        )
+                    } catch (_: Throwable) {
+                        // Cosmetic only. Legacy flags above already provide a safe fallback.
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            // Window styling must never prevent the page from opening.
         }
     }
 
