@@ -87,14 +87,16 @@ class ShellEngine(private val context: Context) {
         if (hasShizukuBinder() && !hasShizukuPermission()) Shizuku.requestPermission(code)
     }
 
-    fun shizukuServerSummary(): String = try {
+    fun shizukuServerSummary(): String {
         if (!hasShizukuBinder()) return "binder=down"
-        val uid = Shizuku.getUid()
-        val api = Shizuku.getVersion()
-        val se = try { Shizuku.getSELinuxContext().orEmpty() } catch (_: Throwable) { "" }
-        "uid=$uid api=$api" + if (se.isNotBlank()) " se=$se" else ""
-    } catch (t: Throwable) {
-        "server-meta-error=${t.javaClass.simpleName}:${t.message.orEmpty()}"
+        return try {
+            val uid = Shizuku.getUid()
+            val api = Shizuku.getVersion()
+            val se = try { Shizuku.getSELinuxContext().orEmpty() } catch (_: Throwable) { "" }
+            "uid=$uid api=$api" + if (se.isNotBlank()) " se=$se" else ""
+        } catch (t: Throwable) {
+            "server-meta-error=${t.javaClass.simpleName}:${t.message.orEmpty()}"
+        }
     }
 
     private fun getShizukuBinder(timeoutMs: Long): IBinder? {
