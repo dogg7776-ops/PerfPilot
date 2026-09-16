@@ -11,8 +11,8 @@ android {
         applicationId = "com.oai.perfpilot"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "1.0.0-beta3-k90-crashfix"
+        versionCode = 13
+        versionName = "1.0.0-beta4-k90-runtimefix"
     }
 
     buildTypes {
