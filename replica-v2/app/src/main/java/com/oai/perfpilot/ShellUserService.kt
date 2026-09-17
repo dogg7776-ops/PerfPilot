@@ -6,11 +6,9 @@ import androidx.annotation.Keep
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-class ShellUserService : IShellService.Stub() {
-    constructor()
-
+class ShellUserService() : IShellService.Stub() {
     @Keep
-    constructor(context: Context) {
+    constructor(context: Context) : this() {
         // Context constructor is supported by Shizuku v13+.
     }
 
