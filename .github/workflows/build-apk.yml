@@ -2,7 +2,7 @@ name: Build PerfPilot APK
 
 on:
   push:
-    branches: [ main, rebuild/v1-mtk-backend ]
+    branches: [ main, rebuild/v1-mtk-backend, rebuild/original-compatible-v2 ]
   workflow_dispatch:
 
 jobs:
@@ -42,18 +42,16 @@ jobs:
       - name: Apply proven crash-safe base patch
         run: python3 patch_crashsafe.py
 
-      - name: Apply K90 Max / Dimensity 9500 beta9 GPU fallback
+      - name: Apply original-compatible v2 overlay
         run: |
           python3 scripts/apply_beta2.py
-          python3 scripts/patch_beta8.py buildsrc/PerfPilot
-          python3 scripts/patch_beta9.py buildsrc/PerfPilot
-          grep -q 'versionName = "1.0.0-beta9-k90-gpufallback"' buildsrc/PerfPilot/app/build.gradle.kts
+          python3 scripts/patch_original_v2.py buildsrc/PerfPilot
+          grep -q 'versionName = "2.0.0-alpha1-original-compatible"' buildsrc/PerfPilot/app/build.gradle.kts
           grep -q 'MT6993' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/DeviceProfile.kt
-          grep -q 'gpu_loading' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt
-          grep -q 'busy_time' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt
-          grep -q 'readGpuRenderer' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt
-          grep -q 'set-user-preferred-display-mode' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/PerfController.kt
-          grep -q 'OverlayService.isRunning()' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/MainActivity.kt
+          grep -q 'set-user-preferred-display-mode' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/DisplayController.kt
+          grep -q '/d/ged/hal/current_freqency' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt
+          grep -q 'ACTION_STOP' buildsrc/PerfPilot/app/src/main/java/com/oai/perfpilot/OverlayService.kt
+          grep -q 'SystemToolsActivity' buildsrc/PerfPilot/app/src/main/AndroidManifest.xml
 
       - name: Static integration and safety checks
         run: python3 scripts/ci_check_beta2.py buildsrc/PerfPilot
@@ -63,11 +61,11 @@ jobs:
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Copy APK
-        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v1.0-beta9-k90-gpufallback-debug.apk
+        run: cp buildsrc/PerfPilot/app/build/outputs/apk/debug/app-debug.apk PerfPilot-v2.0-alpha1-original-compatible-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PerfPilot-v1.0-beta9-k90-gpufallback-debug-apk
-          path: PerfPilot-v1.0-beta9-k90-gpufallback-debug.apk
+          name: PerfPilot-v2.0-alpha1-original-compatible-debug-apk
+          path: PerfPilot-v2.0-alpha1-original-compatible-debug.apk
           if-no-files-found: error
