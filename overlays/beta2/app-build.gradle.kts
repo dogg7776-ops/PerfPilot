@@ -11,8 +11,8 @@ android {
         applicationId = "com.oai.perfpilot"
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
-        versionName = "1.0.0-beta7-k90-gpufix"
+        versionCode = 17
+        versionName = "2.0.0-alpha1-original-compatible"
     }
 
     buildTypes {
