@@ -19,15 +19,11 @@ replacement = '''fun setRefreshRate(hz: Int): String {
     }
 
     fun setAnimationScale'''
-s, n = re.subn(
-    r'fun setRefreshRate\(hz: Int\): String \{.*?\n    fun setAnimationScale',
-    replacement,
-    s,
-    count=1,
-    flags=re.S,
-)
-if n != 1:
+pattern = re.compile(r'fun setRefreshRate\(hz: Int\): String \{.*?\n    fun setAnimationScale', re.S)
+if not pattern.search(s):
     raise SystemExit("failed to patch PerfController.setRefreshRate")
+# Use a function replacement so Python's regex engine does not interpret \\n in the Kotlin string literal.
+s = pattern.sub(lambda _: replacement, s, count=1)
 
 s = s.replace(
     "val targetHz = if (165 in profile.refreshRates) 165 else profile.refreshRates.maxOrNull() ?: 120",
