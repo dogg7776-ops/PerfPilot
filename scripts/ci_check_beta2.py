@@ -9,48 +9,49 @@ def require(path, text, label):
     checks.append((label, text in data))
 
 require("app/src/main/AndroidManifest.xml", "rikka.shizuku.ShizukuProvider", "Shizuku provider declared")
+require("app/src/main/AndroidManifest.xml", ".SystemToolsActivity", "system tools activity declared")
 require("app/src/main/java/com/oai/perfpilot/DeviceProfile.kt", "MT6993", "K90 Max / MT6993 profile")
-require("app/src/main/java/com/oai/perfpilot/DeviceProfile.kt", "165", "K90 Max 165 Hz profile")
+require("app/src/main/java/com/oai/perfpilot/PerfManagerClient.kt", "service call perfmanager 1", "MTK perfmanager acquire route")
+require("app/src/main/java/com/oai/perfpilot/PerfManagerClient.kt", "service call perfmanager 3", "MTK perfmanager release route")
 require("app/src/main/java/com/oai/perfpilot/PerfController.kt", "回读验证成功", "sysfs write verification")
-require("app/src/main/java/com/oai/perfpilot/PerfManagerClient.kt", "perfmanager", "MTK perfmanager client")
-require("app/src/main/java/com/oai/perfpilot/DeviceProfile.kt", "/sys/kernel/fpsgo", "FPSGO resolver roots")
-require("app/src/main/java/com/oai/perfpilot/DeviceProfile.kt", "/sys/kernel/ged", "GED resolver roots")
-require("app/build.gradle.kts", 'versionName = "1.0.0-beta9-k90-gpufallback"', "beta9 GPU fallback version")
-require("app/src/main/java/com/oai/perfpilot/DiagnosticsActivity.kt", "gpuProbeReport", "GPU raw diagnostics")
-require("app/src/main/java/com/oai/perfpilot/AdvancedTuningActivity.kt", "showFallback", "advanced page startup guard")
-require("app/src/main/java/com/oai/perfpilot/ParameterActivity.kt", "读取异常", "parameter read guard")
-require("app/src/main/java/com/oai/perfpilot/UiKit.kt", "decorView.post", "HyperOS deferred insets setup")
-require("app/src/main/java/com/oai/perfpilot/UiKit.kt", "Window styling must never prevent", "window styling crash guard")
-require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "sampleProcStatShell", "shell CPU telemetry fallback")
-require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "stack_working_opp_table", "MT6993 gpufreqv2 stack table mapping")
-require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "gpu_working_opp_table", "MT6993 gpufreqv2 GPU table mapping")
-require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "cachedGpuPath", "GPU sysfs source cache")
-require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "/sys/module/ged/parameters/gpu_loading", "official MTK GED loading probe")
-require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "busy_time", "devfreq busy-time utilization fallback")
-require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "readGpuRenderer", "verified GPU renderer fallback")
+require("app/src/main/java/com/oai/perfpilot/PerfController.kt", "DisplayController(context, shell).apply", "all refresh callers use verified display controller")
+require("app/src/main/java/com/oai/perfpilot/DisplayController.kt", "set-user-preferred-display-mode", "DisplayManager refresh route")
+require("app/src/main/java/com/oai/perfpilot/DisplayController.kt", "supportedModes", "physical display mode discovery")
+require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "/sys/kernel/debug/ged/hal/current_freqency", "GED debugfs GPU frequency")
+require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "/d/ged/hal/current_freqency", "legacy GED GPU frequency")
+require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "stack_working_opp_table", "MTK gpufreqv2 OPP mapping")
+require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "/sys/module/ged/parameters/gpu_loading", "verified GPU utilization fallback")
 require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "EXTRA_TEMPERATURE", "battery temperature source")
-require("app/src/main/java/com/oai/perfpilot/MainActivity.kt", "Choreographer.FrameCallback", "real UI frame callback FPS")
-require("app/src/main/java/com/oai/perfpilot/MainActivity.kt", "newFixedThreadPool(3)", "parallel telemetry workers")
-require("app/src/main/java/com/oai/perfpilot/ShellEngine.kt", "execViaLegacyRemoteProcess", "legacy Shizuku remote-process fallback")
-require("app/src/main/java/com/oai/perfpilot/ShellEngine.kt", ".version(5)", "UserService version bump")
-require("app/src/main/java/com/oai/perfpilot/MainActivity.kt", "已授权，但执行通道异常", "Shizuku execution health surfaced")
-require("app/src/main/java/com/oai/perfpilot/PerfController.kt", "set-user-preferred-display-mode", "DisplayManager refresh-rate route")
-require("app/src/main/java/com/oai/perfpilot/PerfController.kt", "min_refresh_rate", "refresh-rate minimum clamp release")
-require("app/src/main/java/com/oai/perfpilot/OverlayService.kt", "fun isRunning(): Boolean = active", "overlay running state")
-require("app/src/main/java/com/oai/perfpilot/OverlayService.kt", "metricsText.setOnTouchListener", "overlay close button is not swallowed by drag touch")
-require("app/src/main/java/com/oai/perfpilot/MainActivity.kt", "OverlayService.isRunning()", "home overlay start/stop toggle")
+require("app/src/main/java/com/oai/perfpilot/RuntimeMetricsReader.kt", "readForegroundFps", "foreground SurfaceFlinger FPS")
+require("app/src/main/java/com/oai/perfpilot/OverlayService.kt", "ACTION_STOP", "overlay explicit stop action")
+require("app/src/main/java/com/oai/perfpilot/OverlayService.kt", "关闭悬浮窗", "overlay notification stop action")
+require("app/src/main/java/com/oai/perfpilot/MainActivity.kt", "OverlayService.stop(this)", "home overlay start/stop toggle")
+require("app/src/main/java/com/oai/perfpilot/SystemToolsController.kt", "MILLET_NO_RESTRICT_APP", "reversible background protection")
+require("app/src/main/java/com/oai/perfpilot/SystemToolsController.kt", "pm disable-user", "explicit Xiaomi cloud-control component route")
+require("app/src/main/java/com/oai/perfpilot/AdvancedTuningActivity.kt", "PerfCatalog.categories", "all performance categories surfaced")
+require("app/src/main/java/com/oai/perfpilot/PerfCatalog.kt", "触控 / 启动", "touch/launch resources catalogued")
+require("app/src/main/java/com/oai/perfpilot/PerfCatalog.kt", '"C2PS"', "C2PS resources catalogued")
+require("app/src/main/java/com/oai/perfpilot/PerfCatalog.kt", "热感知（只读）", "thermal-aware resources read-only")
+require("app/build.gradle.kts", 'versionName = "2.0.0-alpha1-original-compatible"', "v2 original-compatible version")
+require("app/src/main/java/com/oai/perfpilot/UiKit.kt", "Window styling must never prevent", "window styling crash guard")
 
 source = "\n".join(
     p.read_text(encoding="utf-8", errors="ignore")
     for p in (root / "app/src/main").rglob("*") if p.is_file()
 ).lower()
-for forbidden in ["stop thermald", "stop vendor.thermal", "thermalservice stop", "trip_point_temp"]:
+for forbidden in [
+    "stop thermald",
+    "stop vendor.thermal",
+    "thermalservice stop",
+    "trip_point_temp",
+    "echo 135000",
+]:
     checks.append((f"dangerous thermal mutation absent: {forbidden}", forbidden not in source))
 
 failed = [name for name, ok in checks if not ok]
 for name, ok in checks:
     print(("OK   " if ok else "FAIL ") + name)
 if failed:
-    print(f"{len(failed)} checks failed", file=sys.stderr)
+    print(f"{len(failed)} checks failed: {failed}", file=sys.stderr)
     raise SystemExit(1)
 print(f"{len(checks)} static checks passed")
